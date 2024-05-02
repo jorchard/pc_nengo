@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pc_network import *
 from activations import *
+from learning_rates import *
 
 def create_learning_inputs(X, Y, epochs, stabilize_time, learn_time, shuffle=True):
     """ (np.array, np.array, int, num, num) -> (dict, dict, num)
@@ -173,7 +174,7 @@ if __name__ == "__main__":
         net.config[nengo.Connection].synapse = tau
         net.config[nengo.Probe].synapse = 0
         
-        epochs = 5
+        epochs = 1
         stab_time = 0
         learn_time = 0.2
         shuffle = True
@@ -187,7 +188,7 @@ if __name__ == "__main__":
         pred = nengo.Node(nengo.processes.Piecewise(y_input))  # percept (top layer)
         
         # PC layers
-        PC_net = PCNetwork(n_nodes=[4, 10, 3], tau_learn=0.1, symmetric=True, activation=Tanh, learn_until=learn_until)
+        PC_net = PCNetwork(n_nodes=[4, 10, 3], tau_learn=ConstRate(0.1), symmetric=True, activation=Tanh, learn_until=learn_until)
         PC_net.connect_input(stim=stim)
         PC_net.connect_output(pred)
 

@@ -18,8 +18,6 @@ class ActivationFunction:
     def deriv(cls, x):
         pass
 
-    def __str__(self):
-        return self.__class__
 
 
 class Linear(ActivationFunction):
@@ -36,6 +34,9 @@ class Linear(ActivationFunction):
     @classmethod
     def deriv(cls, x):
         return np.ones_like(x)
+    
+    def __str__(self):
+        return "Linear"
     
 class ReLU(ActivationFunction):
     """
@@ -60,7 +61,9 @@ class ReLU(ActivationFunction):
                 return 0
             else:
                 return 1
-            
+
+    def __str__(self):
+        return "ReLU"            
 
 class Logistic(ActivationFunction):
     """
@@ -76,6 +79,9 @@ class Logistic(ActivationFunction):
     @classmethod
     def deriv(cls, x):
         return cls.func(x)*(1-cls.func(x))
+    
+    def __str__(self):
+        return "Logistic"
 
 
 class Tanh(ActivationFunction):
@@ -93,6 +99,8 @@ class Tanh(ActivationFunction):
     def deriv(cls, x):
         return 1 - np.tanh(x)**2
 
+    def __str__(self):
+        return "Tanh"
 
 class Threshold(ActivationFunction):
     """
@@ -117,6 +125,8 @@ class Threshold(ActivationFunction):
     def deriv(cls, x):
         return np.zeros_like(x)
 
+    def __str__(self):
+        return "Threshold"
 
 class Softplus(ActivationFunction):
     """
@@ -133,6 +143,8 @@ class Softplus(ActivationFunction):
     def deriv(cls, x):
         return Logistic.func(x)
 
+    def __str__(self):
+        return "Softplus"
 
 class LeakyReLU(ActivationFunction):
     """
@@ -157,6 +169,8 @@ class LeakyReLU(ActivationFunction):
         else:
             return 1
 
+    def __str__(self):
+        return "LeakyReLU"
 
 class Gaussian(ActivationFunction):
     """
@@ -173,6 +187,8 @@ class Gaussian(ActivationFunction):
     def deriv(cls, x):
         return -2*x*np.exp(-x**2)
 
+    def __str__(self):
+        return "Gaussian"
 
 if __name__ == '__main__':
     print(ReLU)

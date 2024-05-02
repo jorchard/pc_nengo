@@ -4,6 +4,7 @@
 import numpy as np
 import nengo
 from activations import *
+from learning_rates import *
 
 class PCLayer(nengo.Network):
     '''
@@ -91,12 +92,12 @@ class Updater(nengo.Process):
 
             if self.connection_inst.inference_node.output(t) == 0: #not doing inference, so we learn
                 dM = np.outer(self.connection_inst.activation.func(v_in), e_in)
-                #print("tau learn", self.connection_inst.tau_learn)
+                #print("tau learn", self.connection_inst.tau_learn(t))
                 #print("dM", dM)
                 #print("M", self.M)
-                self.connection_inst.M += dt * dM / self.connection_inst.tau_learn
+                self.connection_inst.M += dt * dM / self.connection_inst.tau_learn(t)
                 if not self.connection_inst.symmetric:
-                    self.connection_inst.W += dt * dM.T / self.connection_inst.tau_learn
+                    self.connection_inst.W += dt * dM.T / self.connection_inst.tau_learn(t)
 
             return np.concatenate((pred_out, err_out)) 
         return step_updater
@@ -117,7 +118,7 @@ class PCConnection(nengo.Network):
                    ie. W = M.T (default True)
       activation   Activation function to use. Must be an object with func and deriv methods.
     '''
-    def __init__(self, below, above, inference_node=None, tau_learn=20., symmetric=True, M=None, activation=None):
+    def __init__(self, below, above, inference_node=None, tau_learn=ConstRate(20.), symmetric=True, M=None, activation=None):
         self.label = None
         self.below = below
         self.above = above
@@ -180,7 +181,7 @@ class PCNetwork:
                               in that position in the list
     learn_until           Num, the amount of simulation time to spend learning connection weights, defaults to 0
     '''
-    def __init__(self, n_nodes=None, symmetric=True, tau_learn=10., M=None, activation=None, learn_until=0):
+    def __init__(self, n_nodes=None, symmetric=True, tau_learn=ConstRate(20.), M=None, activation=None, learn_until=0):
         if n_nodes is None:
             n_nodes = []
         elif type(n_nodes) is not list:
@@ -195,14 +196,18 @@ class PCNetwork:
         self.inference_node = nengo.Node(self.inference_output)
 
         #set up member attributes and input validation
-        if type(tau_learn) is int or type(tau_learn) is float:
-            self.tau_learn = [tau_learn for i in range(self.num_hidden_layers-1)]   # learning time constant
-        elif type(tau_learn) is not list:
-            raise TypeError(f"tau_learn must be a list or an int/float, instead got {type(tau_learn)}")
-        else:
+        if type(tau_learn) is list:
             if len(tau_learn) != self.num_hidden_layers-1:
-                raise ValueError(f"If tau is a list, it must have {self.num_hidden_layers-1}, instead got {len(tau_learn)}")
-            self.tau_learn = tau_learn
+                raise ValueError(f"If tau_learn is a list, it must have {self.num_hidden_layers-1} elements, instead got {len(tau_learn)}")
+            
+            for tau in tau_learn:
+                if not callable(tau): #is not callable
+                    raise NotImplementedError("The learning rates must be callable with one input argument.")
+        elif not callable(tau_learn): #is not callable
+            raise NotImplementedError("The learning rates must be callable with one input argument.")
+        else:
+            self.tau_learn = [tau_learn for i in range(self.num_hidden_layers-1)]
+
   
         if type(M) is np.ndarray or M is None:
             self.M = [M for i in range(self.num_hidden_layers-1)]
