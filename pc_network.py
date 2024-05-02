@@ -87,11 +87,13 @@ class Updater(nengo.Process):
             e_in = x[:self.connection_inst.n_e]
             v_in = x[self.connection_inst.n_e:]
 
-            err_out = self.connection_inst.activation.deriv(v_in) * (e_in @ self.connection_inst.W)
-            pred_out = self.connection_inst.activation.func(v_in) @ self.connection_inst.M
+            #err_out = self.connection_inst.activation.deriv(v_in) * (e_in @ self.connection_inst.W)
+            #pred_out = self.connection_inst.activation.func(v_in) @ self.connection_inst.M
+            err_out = self.connection_inst.activation.deriv(v_in) * (self.connection_inst.W @ e_in)
+            pred_out = self.connection_inst.M @ self.connection_inst.activation.func(v_in)
 
             if self.connection_inst.inference_node.output(t) == 0: #not doing inference, so we learn
-                dM = np.outer(self.connection_inst.activation.func(v_in), e_in)
+                dM = np.outer(e_in, self.connection_inst.activation.func(v_in))
                 #print("tau learn", self.connection_inst.tau_learn(t))
                 #print("dM", dM)
                 #print("M", self.M)
@@ -127,7 +129,7 @@ class PCConnection(nengo.Network):
         self.n_e = self.below.e.n_ensembles  # dimension of below layer
         self.n_v = self.above.v.n_ensembles  # dimension of above layer
 
-        self.dM = np.zeros((self.n_v, self.n_e))
+        self.dM = np.zeros((self.n_e, self.n_v))
         if not self.symmetric:
             self.dW = self.dM.T
 
@@ -138,13 +140,13 @@ class PCConnection(nengo.Network):
 
         # Set up connect matrices
         if M is None:
-            self.M = np.random.normal(size=(self.n_v, self.n_e))/10.
+            self.M = np.random.normal(size=(self.n_e, self.n_v))/10.
         else:
             self.M = M
         if self.symmetric:
             self.W = self.M.T
         else:
-            self.W = np.random.normal(size=(self.n_e, self.n_v))
+            self.W = np.random.normal(size=(self.n_v, self.n_e))
 
 
         # Set up the node that applies the connection weights
@@ -154,10 +156,10 @@ class PCConnection(nengo.Network):
         
 
         n = self.n_e
-        nengo.Connection(self.below.e.output, self.exchange[:n], synapse=None)               # inp -> exchange
+        nengo.Connection(self.below.e.output, self.exchange[:n], transform=1, synapse=None)               # inp -> exchange
         nengo.Connection(self.exchange[:n], self.below.e.input, transform=-1)  # inp <- con
         nengo.Connection(self.above.v.output, self.exchange[n:], transform=1, synapse=None)  # con <- hid
-        nengo.Connection(self.exchange[n:], self.above.v.input)                # con -> hid
+        nengo.Connection(self.exchange[n:], self.above.v.input, transform=1)                # con -> hid
 
 
     def update_weights(self):
