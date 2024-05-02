@@ -87,11 +87,13 @@ class Updater(nengo.Process):
             e_in = x[:self.connection_inst.n_e]
             v_in = x[self.connection_inst.n_e:]
 
-            err_out = self.connection_inst.activation.deriv(v_in) * (e_in @ self.connection_inst.W)
-            pred_out = self.connection_inst.activation.func(v_in) @ self.connection_inst.M
+            #err_out = self.connection_inst.activation.deriv(v_in) * (e_in @ self.connection_inst.W)
+            #pred_out = self.connection_inst.activation.func(v_in) @ self.connection_inst.M
+            err_out = self.connection_inst.activation.deriv(v_in) * (self.connection_inst.W @ e_in)
+            pred_out = self.connection_inst.M @ self.connection_inst.activation.func(v_in)
 
             if self.connection_inst.inference_node.output(t) == 0: #not doing inference, so we learn
-                dM = np.outer(self.connection_inst.activation.func(v_in), e_in)
+                dM = np.outer(e_in, self.connection_inst.activation.func(v_in))
                 #print("tau learn", self.connection_inst.tau_learn(t))
                 #print("dM", dM)
                 #print("M", self.M)
@@ -134,13 +136,13 @@ class PCConnection(nengo.Network):
 
         # Set up connect matrices
         if M is None:
-            self.M = np.random.normal(size=(self.n_v, self.n_e))/10.
+            self.M = np.random.normal(size=(self.n_e, self.n_v))/10.
         else:
             self.M = M
         if self.symmetric:
             self.W = self.M.T
         else:
-            self.W = np.random.normal(size=(self.n_e, self.n_v))
+            self.W = np.random.normal(size=(self.n_v, self.n_e))
 
 
         # Set up the node that applies the connection weights
