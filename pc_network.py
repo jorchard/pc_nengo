@@ -95,9 +95,9 @@ class Updater(nengo.Process):
                 #print("tau learn", self.connection_inst.tau_learn(t))
                 #print("dM", dM)
                 #print("M", self.M)
-                self.connection_inst.M += dt * dM / self.connection_inst.tau_learn(t)
+                self.connection_inst.dM += dt * dM / self.connection_inst.tau_learn(t)
                 if not self.connection_inst.symmetric:
-                    self.connection_inst.W += dt * dM.T / self.connection_inst.tau_learn(t)
+                    self.connection_inst.dW += dt * dM.T / self.connection_inst.tau_learn(t)
 
             return np.concatenate((pred_out, err_out)) 
         return step_updater
@@ -127,6 +127,10 @@ class PCConnection(nengo.Network):
         self.n_e = self.below.e.n_ensembles  # dimension of below layer
         self.n_v = self.above.v.n_ensembles  # dimension of above layer
 
+        self.dM = np.zeros((self.n_v, self.n_e))
+        if not self.symmetric:
+            self.dW = self.dM.T
+
         self.inference_node = inference_node #we will learn if and only if not doing inference
         self.updater = Updater(self) #internal node we use to apply the Euler step for updating weights
         
@@ -155,6 +159,13 @@ class PCConnection(nengo.Network):
         nengo.Connection(self.above.v.output, self.exchange[n:], transform=1, synapse=None)  # con <- hid
         nengo.Connection(self.exchange[n:], self.above.v.input)                # con -> hid
 
+
+    def update_weights(self):
+        self.M += self.dM
+        self.dM = np.zeros_like(self.dM)
+        if not self.symmetric:
+            self.W += self.dW
+            self.dW = np.zeros_like(self.dW)
 
 
 
@@ -300,3 +311,8 @@ class PCNetwork:
             val_probes.append(nengo.Probe(layer.v.output, label=f"Hidden Layer {idx} Value"))
             err_probes.append(nengo.Probe(layer.e.output, label=f"Hidden Layer {idx} Error"))
         return val_probes, err_probes
+    
+
+    def update_weights(self):
+        for connection in self.connections:
+            connection.update_weights()

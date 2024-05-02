@@ -61,7 +61,7 @@ def create_learning_inputs(X, Y, epochs, stabilize_time, learn_time, shuffle=Tru
     return x_dict, y_dict, t
 
 
-def train_network(sim, pc_net, stabilize_time, learn_time, learn_until):
+def train_network(sim, pc_net, batch_time, learn_until):
     """ (nengo.Simulator, PCNetwork, num, num, num) -> ()
 
     sim                 nengo.Simulator, the simulator created using the network we wish to train.
@@ -71,17 +71,11 @@ def train_network(sim, pc_net, stabilize_time, learn_time, learn_until):
     learn_until         Num, the total simulation time.
 
     """
-    sim.run(learn_until)
-    """
-    time = 0 #keep track of current time
-    while time < t:
-        pc_net.update_learning_rule(False)
-        sim.run(stabilize_time)
-        pc_net.update_learning_rule(True)
-        sim.run(learn_time) 
-        time += stabilize_time + learn_time
-    pc_net.update_learning_rule(False) #set the network to not learn anymore
-    """
+    time = 0
+    while time < learn_until:
+        sim.run(batch_time)
+        pc_net.update_weights()
+        time += batch_time
 
 
 def add_inference_inputs(X, Y, x_dict, y_dict, inf_time, learn_until):
@@ -177,6 +171,7 @@ if __name__ == "__main__":
         epochs = 1
         stab_time = 0
         learn_time = 0.2
+        batch_time = learn_time*8 #batch size of 8
         shuffle = True
         inf_time = 0.2
         #define data
@@ -202,8 +197,9 @@ if __name__ == "__main__":
 
         val_probes, err_probes = PC_net.get_probes()
 
-    sim = nengo.Simulator(net)
-    train_network(sim, PC_net, stab_time, learn_time, learn_until)
+    dt = 0.0001
+    sim = nengo.Simulator(net, dt=dt)
+    train_network(sim, PC_net, batch_time, learn_until)
     preds = test_network(sim, PC_net, num_preds, inf_time, val_probes[-1])
     
     pred_class = np.zeros_like(preds)
@@ -238,7 +234,7 @@ if __name__ == "__main__":
     idx = [0, 4000]
     idx = [7000, 10000]
     #idx = [18000, 20000]
-    idx = [0, len(sim.trange())]
+    idx = [0, int(learn_until/dt)]
     #idx = [115000, 120000]
     tt = sim.trange()[idx[0]:idx[1]]
 
