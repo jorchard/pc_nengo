@@ -159,38 +159,55 @@ class TestAddInferenceInputs(unittest.TestCase):
     def test_empty_dicts(self):
         x_dic = {}
         y_dic = {}
-        inf_time = 1
+        timeout = 1
+        stab_time = 1
         learn_until = 10
-        num_predictors = add_inference_inputs(self.X, self.Y, x_dic, y_dic, inf_time, learn_until)
+        num_predictors = add_inference_inputs(self.X, self.Y, x_dic, y_dic, timeout, stab_time, learn_until)
         self.assertEqual(num_predictors, self.Y.shape[0])
 
 
     def test_mismatch_size(self):
         x_dic = {}
         y_dic = {}
-        inf_time = 1
+        timeout = 1
+        stab_time = 1
         learn_until = 10
         with self.assertRaises(IndexError):
-            num_predictors = add_inference_inputs(self.X, np.array([1, 2]), x_dic, y_dic, inf_time, learn_until)
+            num_predictors = add_inference_inputs(self.X, np.array([1, 2]), x_dic, y_dic, timeout, stab_time, learn_until)
 
 
     def test_empty_inputs(self):
         x_dic = {}
         y_dic = {}
-        inf_time = 1
+        timeout = 1
+        stab_time = 1
         learn_until = 10
-        num_predictors = add_inference_inputs(np.array([]), np.array([]), x_dic, y_dic, inf_time, learn_until)
+        num_predictors = add_inference_inputs(np.array([]), np.array([]), x_dic, y_dic, timeout, stab_time, learn_until)
         self.assertEqual(0, num_predictors)
         self.assertEqual(0, len(x_dic.keys()))
         self.assertEqual(0, len(y_dic.keys()))
 
-    def test_no_inf_time(self):
+    def test_no_timeout(self):
         x_dic = {}
         y_dic = {}
-        inf_time = 0
+        timeout = 0
+        stab_time = 1
         learn_until = 10
         with self.assertRaises(ValueError):
-            num_predictors = add_inference_inputs(self.X, self.Y, x_dic, y_dic, inf_time, learn_until)
+            num_predictors = add_inference_inputs(self.X, self.Y, x_dic, y_dic, timeout, stab_time, learn_until)
+    
+    def test_no_stab_time(self):
+        x_dic = {}
+        y_dic = {}
+        timeout = 1
+        stab_time = 0
+        learn_until = 10
+        num_predictors = add_inference_inputs(self.X, self.Y, x_dic, y_dic, timeout, stab_time, learn_until)
+
+        for index, key in enumerate([learn_until + k*timeout for k in range(num_predictors)]):
+            self.assertTrue(np.all(x_dic[key] == self.X[index,:]))
+            self.assertTrue(np.all(y_dic[key] == self.Y[index,:]))
+
 
 if __name__ == '__main__':
     #np.random.seed(1)
