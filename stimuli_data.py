@@ -69,42 +69,70 @@ def load_eye_inhibition(feature=8, reflection=None, path=path):
     return X
 
 
-def transform_eye_inhibition(X):
+def transform_eye_inhibition(X, size=(68, 100)):
     """ (list[Image]) -> (np.array)
     Transforms the images in a list to an easily workable format.
     """
     #resize the image to 68x100
     #convert to numpy array
     #normalize pixel values to [0, 1]
-    new_X = [np.asarray(img.resize((68, 100)))/255 for img in X]
-    new_X = np.array(new_X)
-    return np.reshape(new_X, (new_X.shape[0], new_X.shape[1]*new_X.shape[2]))
+    new_X = [np.asarray(img.resize(size))/255 for img in X]
+    return np.array(new_X)
 
 
 def shuffle_data(X):
+    img_height = X.shape[1]
+    img_width = X.shape[2]
     S = []
     for i in range(X.shape[0]):
-        temp = deepcopy(X[i])
+        temp = X[i].flatten()
         np.random.shuffle(temp)
-        S.append(temp)
+        S.append(np.reshape(temp, (img_height, img_width)))
+    return np.array(S)
+
+
+def shuffle_block(X, block_size=(25, 17)):
+    S = []
+    image_height, image_width = X[0].shape
+
+    for i in range(X.shape[0]):
+
+        block_positions = []
+
+        for row_idx in range(0, image_height, block_size[0]):
+            for col_idx in range(0, image_width, block_size[1]):
+                block_positions.append((row_idx, col_idx))
+
+        block_positions_shuffled = np.array(block_positions)
+
+        #shuffle blocks
+        np.random.shuffle(block_positions_shuffled)
+
+        shuffled_image = np.zeros((image_height, image_width), dtype=X.dtype)
+        for idx, (row_idx, col_idx) in enumerate(block_positions_shuffled):
+            block = X[i][row_idx:row_idx+block_size[0], col_idx:col_idx+block_size[1]]
+            shuffled_image[block_positions[idx][0]:block_positions[idx][0]+block_size[0], block_positions[idx][1]:block_positions[idx][1]+block_size[1]] = block
+        
+        S.append(shuffled_image)
+
     return np.array(S)
 
 
 if __name__ == "__main__":
-    #img = Image.open(path+"F01-16r.bmp")
-    #img = img.resize((68, 100))
-
-    #d = np.asarray(img)
-    #d = (d - np.mean(d))/np.std(d)
-    #plt.imshow(d, cmap="gray")
-
-    #counts, bins = np.histogram(d, 256)
-    #plt.stairs(counts, bins)
-
     X = transform_eye_inhibition(load_eye_inhibition())
+    plt.figure()
+    plt.imshow(X[0], cmap="gray")
+    plt.show()
 
-    plt.imshow(np.reshape(X[0], (100, 68)), cmap="gray")
-    print(X.shape)
+    S = shuffle_data(X)
+    plt.figure()
+    plt.imshow(S[0], cmap="gray")
+    plt.show()
+
+    S_block = shuffle_block(X)
+    plt.figure()
+    plt.imshow(S_block[0], cmap="gray")
+    plt.show()
 
     plt.figure()
     for i in range(X.shape[0]):
@@ -113,22 +141,16 @@ if __name__ == "__main__":
     plt.title("Pixel Intensity of Faces")
     plt.show()
 
-    S = []
-    for i in range(X.shape[0]):
-        temp = deepcopy(X[i])
-        np.random.shuffle(temp)
-        S.append(temp)
-    S = np.array(S)
-    
     plt.figure()
     for i in range(S.shape[0]):
         counts, bins = np.histogram(S[i], 256)
         plt.stairs(counts, bins)
         plt.title("Pixel Intensity of Shuffled Faces")
     plt.show()
-    #h = img.histogram()
-    #print(h)
-    #plt.stairs(h, list(range(len(h)+1)))
-    
-    #print(d)
-    
+
+    plt.figure()
+    for i in range(S_block.shape[0]):
+        counts, bins = np.histogram(S_block[i], 256)
+        plt.stairs(counts, bins)
+        plt.title("Pixel Intensity of Block-Shuffled Faces")
+    plt.show()
