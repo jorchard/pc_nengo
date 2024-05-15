@@ -3,12 +3,15 @@
 
 import numpy as np
 from PIL import Image
+from scipy.ndimage import rotate
+import torch
+from torch.utils.data import TensorDataset, DataLoader
 from copy import deepcopy
 import matplotlib.pyplot as plt
 
 
 #path to folder with all of the images
-path = "Eye_Inhibition_stimuli\\"
+face_path = "Eye_Inhibition_stimuli\\"
 
 # the images are labelled according to the facial features the image shows
 # this dictionary maps those labels to the features
@@ -26,9 +29,9 @@ features = {1: "Cropped eye",
 # the exception to this is the image labels 17 and 18, which are reflections of each other
 
 
-def load_eye_inhibition(feature=8, reflection=None, path=path):
-    """ (int, boolean, str) -> (list[Image])
-    Loads the face images from the Eye_Inhibition_stimuli folder (directory given by path).
+def load_eye_inhibition(feature=8, reflection=None, size=(68, 100), face_path=face_path):
+    """ (int, boolean, tuple[int], str) -> (list[Image])
+    Loads the face images from the Eye_Inhibition_stimuli folder (directory given by face_path).
     Loads only the images with the given features.
     The reflection boolean indicates whether to load the left or right images. If it is None, loads both.
     """
@@ -56,28 +59,105 @@ def load_eye_inhibition(feature=8, reflection=None, path=path):
                 idx_label = str(idx)
             
             if reflection is None:
-                img = Image.open(path + f"{sex_label}{idx_label}-{l_label}l.bmp")
+                img = Image.open(face_path + f"{sex_label}{idx_label}-{l_label}l.bmp")
                 X.append(img)
-                img = Image.open(path + f"{sex_label}{idx_label}-{r_label}r.bmp")
+                img = Image.open(face_path + f"{sex_label}{idx_label}-{r_label}r.bmp")
                 X.append(img)
             elif reflection:
-                img = Image.open(path + f"{sex_label}{idx_label}-{r_label}r.bmp")
+                img = Image.open(face_path + f"{sex_label}{idx_label}-{r_label}r.bmp")
                 X.append(img)
             else:
-                img = Image.open(path + f"{sex_label}{idx_label}-{l_label}l.bmp")
+                img = Image.open(face_path + f"{sex_label}{idx_label}-{l_label}l.bmp")
                 X.append(img)
-    return X
 
-
-def transform_eye_inhibition(X, size=(68, 100)):
-    """ (list[Image]) -> (np.array)
-    Transforms the images in a list to an easily workable format.
-    """
-    #resize the image to 68x100
-    #convert to numpy array
-    #normalize pixel values to [0, 1]
+    #resize the image to 68x100, convert to numpy array, normalize pixel values to [0, 1]
     new_X = [np.asarray(img.resize(size))/255 for img in X]
     return np.array(new_X)
+
+
+def transform_eye_inhibition(X, size=(68, 100), radius=9):
+    """ (list[Image], tuple[int], int) -> (np.array)
+    Transforms the images in a list to an easily workable format.
+
+    X        list[Image], list of images to transform
+    size     tuple[int], dimension to resize the image to
+    radius   int, radius around the Fourier transform DC which we use set to 0
+    """
+    #take fourier transforms
+    fourier_transforms = [np.fft.fft2(x) for x in X]
+    #shift the DC to the center
+    fourier_transforms = [np.fft.fftshift(freqs) for freqs in fourier_transforms]
+
+    #where the center is
+    center_idx = (size[1]//2, size[0]//2)
+
+    #new_X = []
+    for freqs in fourier_transforms: #remove the radius smallest frequencies
+        for i in range(radius):
+            for j in range(radius):
+                #freqs[center_idx[1] + i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
+                #freqs[center_idx[1] + i, center_idx[0] - j] = np.random.randn() + np.random.randn()*1.j
+                #freqs[center_idx[1] - i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
+                #freqs[center_idx[1] - i, center_idx[0] - j] = np.random.randn() + np.random.randn()*1.j
+                freqs[center_idx[0] + i, center_idx[1] + j] = 0. + 0.j
+                freqs[center_idx[0] + i, center_idx[1] - j] = 0. + 0.j
+                freqs[center_idx[0] - i, center_idx[1] + j] = 0. + 0.j
+                freqs[center_idx[0] - i, center_idx[1] - j] = 0. + 0.j                                           
+    
+    new_X = np.real(np.array([np.fft.ifft2(np.fft.ifftshift(freqs)) for freqs in fourier_transforms]))
+
+    return np.real(np.array([np.fft.ifft2(np.fft.ifftshift(freqs)) for freqs in fourier_transforms]))
+
+
+def vertical_translate(arr, shift):
+    """
+    Translates the array vertically by the amount shift.
+    Fills in the blanks by using the average value.
+
+    If shift is positive we move the image up, if it is negative we move it down.
+    """
+    ave_val = np.mean(arr)
+    new_arr = np.full_like(arr, ave_val)
+
+    if shift >= 0:
+        new_arr[0:arr.shape[0]-shift,:] = arr[shift:,:]
+    else:
+        new_arr[-shift:,:] = arr[0:arr.shape[0]+shift,:]
+    
+    return new_arr
+
+
+
+def augment_data(X, num_translations, num_rotations, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45):
+    """ (list, int, int, int, int, num, num) -> (np.array)
+    Augment the data by rotating and shifting.
+
+    X                   list, the array of images to be augmented,
+    num_translations    int, the number of translations to do.
+    num_rotations       int, the number of rotations to do.
+    min_shift           int, the minimum shift value.
+    max_shift           int, the maximum shift value.
+    min_angle           num, the minimum rotation angle.
+    max_angle           num, the maximum roation angle.
+    """
+    new_X = []
+
+    for idx in range(X.shape[0]):
+        img = X[idx]
+        new_X.append(img)
+
+        for trans in range(num_translations):
+            shift = np.random.randint(min_shift, max_shift+1)
+            temp_img = vertical_translate(img, shift)
+            new_X.append(temp_img)
+        
+        for rot in range(num_rotations):
+            angle = np.random.uniform(min_angle, max_angle)
+            temp_img = rotate(img, angle, reshape=False, cval=np.mean(img), mode='constant')
+            new_X.append(temp_img)
+
+    return np.array(new_X)
+
 
 
 def shuffle_data(X):
@@ -118,18 +198,69 @@ def shuffle_block(X, block_size=(25, 17)):
     return np.array(S)
 
 
+def get_dataloader_shuffled(feature=8, reflection=None, face_path=face_path, 
+                            size=(68, 100), radius=9, block_size=(25, 17),
+                            num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
+                            batch_size=8, shuffle=True, channels=True):
+    """
+    Puts the face images and their shuffled counterparts into a DataLoader object. 
+    Normal images are labelled 1, shuffled images are labeled 1.
+
+    feautre             int, what facial features are present on the face images (nose, eyes, ears, etc.).
+    reflection          bool, whether to include the original faces, their reflections, or both (None).
+    face_path           str, path to the directory with all the images.
+    size                tuple[int], the size to reshape the image to.
+    block_size          tuple[int], size of the blocks to use when shuffling the images.
+    num_translations    int, the number of translations to do.
+    num_rotations       int, the number of rotations to do.
+    min_shift           int, the minimum shift value.
+    max_shift           int, the maximum shift value.
+    min_angle           num, the minimum rotation angle.
+    max_angle           num, the maximum roation angle.
+    batch_size          int, the batch size for the DataLoader.
+    shuffle             bool, whether or not to shuffle the samples in the dataloader.
+    channels            bool, whether or not to reshape the dataset to include a dimension for channels.
+    """
+    X = load_eye_inhibition(feature=feature, reflection=reflection, size=size, face_path=face_path)
+    X = augment_data(X, num_translations=num_translations, num_rotations=num_rotations, 
+                     min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
+    X = transform_eye_inhibition(X, radius=radius)
+    S = shuffle_block(X, block_size=block_size)
+
+    labels = np.concatenate((np.ones(X.shape[0]), np.zeros(S.shape[0])))
+    data = np.concatenate((X, S), axis=0)
+
+    if channels: #unsqueeze the tensor to include channel dimension
+        dataset = TensorDataset(torch.from_numpy(data).unsqueeze(1), torch.from_numpy(labels))
+    else:
+        dataset = TensorDataset(torch.from_numpy(data), torch.from_numpy(labels))
+
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+
 if __name__ == "__main__":
     X = transform_eye_inhibition(load_eye_inhibition())
+
     plt.figure()
     plt.imshow(X[0], cmap="gray")
     plt.show()
 
+    plt.figure()
+    for i in range(X.shape[0]):
+        counts, bins = np.histogram(X[i], 256)
+        plt.stairs(counts, bins)
+    plt.title("Pixel Intensity of Faces")
+    plt.show()
+    
+    """
     S = shuffle_data(X)
+
     plt.figure()
     plt.imshow(S[0], cmap="gray")
     plt.show()
 
     S_block = shuffle_block(X)
+
     plt.figure()
     plt.imshow(S_block[0], cmap="gray")
     plt.show()
@@ -154,3 +285,14 @@ if __name__ == "__main__":
         plt.stairs(counts, bins)
         plt.title("Pixel Intensity of Block-Shuffled Faces")
     plt.show()
+    """
+
+    dl = get_dataloader_shuffled(radius=3)
+
+
+    for batch, (X, y) in enumerate(dl):
+        for i in range(len(y)):
+            plt.figure()
+            plt.imshow(X[i].squeeze().numpy(), cmap='gray')
+            plt.title(f"Label: {y[i]}")
+            plt.show()
