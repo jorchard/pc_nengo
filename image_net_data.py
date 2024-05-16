@@ -44,14 +44,16 @@ def load_imagenet(num_images, classes, image_net_path=image_net_path):
     return X
 
 
-def transform_imagenet(X, size=(68, 100), radius=9):
-    """ (list[Image], tuple[int], int) -> (np.array)
+def transform_imagenet(X, size=(68, 100), radius=(2, 3)):
+    """ (list[Image], tuple[int], tuple[int]) -> (np.array)
     Transforms the images in a list to an easily workable format.
 
     X        list[Image], list of images to transform
     size     tuple[int], dimension to resize the image to
-    radius   int, radius around the Fourier transform DC which we use set to 0
+    radius   tuple[int], radius around the Fourier transform DC which we use set to 0
     """
+    if type(radius) is int:
+        radius = (radius, radius)
     #resize the image to 68x100, grayscale, convert to numpy array, normalize pixel values to [0, 1]
     new_X = [np.asarray(img.resize(size).convert("L"))/255 for img in X]
 
@@ -65,8 +67,8 @@ def transform_imagenet(X, size=(68, 100), radius=9):
 
     #new_X = []
     for freqs in fourier_transforms: #remove the radius smallest frequencies
-        for i in range(radius):
-            for j in range(radius):
+        for i in range(radius[0]):
+            for j in range(radius[1]):
                 #freqs[center_idx[1] + i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
                 #freqs[center_idx[1] + i, center_idx[0] - j] = np.random.randn() + np.random.randn()*1.j
                 #freqs[center_idx[1] - i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
@@ -83,13 +85,13 @@ def transform_imagenet(X, size=(68, 100), radius=9):
 
 def get_dataloader(feature=8, reflection=None, num_images=10, classes=[], 
                    face_path=face_path, image_net_path=image_net_path, 
-                   size=(68, 100), radius=9, 
+                   size=(68, 100), block_size=(25, 17), radius=(2, 3), 
                    num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
                    batch_size=8, shuffle=True, channels=True):
     """
     Puts the face images and the imagenet images into a DataLoader object. 
     Face images are labelled 1, imagenet images are labeled 0.
-    Returns a training dataloader with augmented images and a testing dataloader with unaugmented images.
+    Returns a training dataloader with augmented images.
 
     feautre             int, what facial features are present on the face images (nose, eyes, ears, etc.).
     num_images          int, how many images per class to load.
@@ -120,28 +122,32 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
     S = load_imagenet(num_images=num_images, classes=classes, image_net_path=image_net_path)
     S = transform_imagenet(S, size=size, radius=radius)
 
+    #shuffle the face images by block
+    B = shuffle_block(X, block_size=block_size)
+
     #training dataloader
-    train_labels = np.concatenate((np.ones(X_aug.shape[0]), np.zeros(S.shape[0])))
-    train_data = np.concatenate((X_aug, S), axis=0)
+    train_labels = np.concatenate((np.ones(X_aug.shape[0]), np.zeros(S.shape[0] + B.shape[0])))
+    train_data = np.concatenate((X_aug, S, B), axis=0)
 
     if channels: #unsqueeze the tensor to include channel dimension
         train_dataset = TensorDataset(torch.from_numpy(train_data).float().unsqueeze(1), torch.from_numpy(train_labels).float())
     else:
         train_dataset = TensorDataset(torch.from_numpy(train_data).float(), torch.from_numpy(train_labels).float())
 
+    """
     #testing dataloader
     test_labels = np.concatenate((np.ones(X.shape[0]), np.zeros(S.shape[0])))
-    test_data = np.concatenate((X, S), axis=0)
+    test_data = np.concatenate((X, S, B), axis=0)
 
     if channels: #unsqueeze the tensor to include channel dimension
         test_dataset = TensorDataset(torch.from_numpy(test_data).float().unsqueeze(1), torch.from_numpy(test_labels).float())
     else:
         test_dataset = TensorDataset(torch.from_numpy(test_data).float(), torch.from_numpy(test_labels).float())
-
-    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
     test_dl = DataLoader(test_dataset, batch_size=batch_size, shuffle=shuffle)
+    """
+    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
 
-    return train_dl, test_dl
+    return train_dl#, test_dl
 
 
 if __name__ == '__main__':
@@ -164,4 +170,4 @@ if __name__ == '__main__':
     plt.show()
 
 
-    train_dl, test_dl = get_dataloader(classes=["n04330267", "n04326547", "n04328186", "n04330267"])
+    train_dl = get_dataloader(classes=["n04330267", "n04326547", "n04328186", "n04330267"])
