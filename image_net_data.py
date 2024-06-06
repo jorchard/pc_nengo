@@ -6,7 +6,7 @@ import os
 from stimuli_data import *
 
 #path to folder with all of the training images
-image_net_path = "imagenet-mini\\train\\"
+image_net_path = "imagenet-mini/train/"
 
 #path to the .txt files with the label names
 label_image_net_path = "words.txt"
@@ -39,7 +39,7 @@ def load_imagenet(num_images, classes, size=(68, 100), image_net_path=image_net_
 
         #open images
         for idx in indices:
-            X.append(Image.open(directory + "\\" + image_names[idx]))
+            X.append(Image.open(directory + "/" + image_names[idx]))
     
     #resize the image to 68x100, grayscale, convert to numpy array, normalize pixel values to [0, 1]
     return np.array([np.asarray(img.resize(size).convert("L"))/255 for img in X])
@@ -195,7 +195,7 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
     return train_dl#, test_dl
 
 
-def get_imagenet_validation_dataloader(num_images=10, classes=[], image_net_path="imagenet-mini\\val\\", 
+def get_imagenet_validation_dataloader(num_images=10, classes=[], image_net_path="imagenet-mini/val/", 
                                         size=(68, 100), radius=(2, 3), batch_size=8, shuffle=True, channels=True):
     """
     Puts the face images and the imagenet images into a DataLoader object. 

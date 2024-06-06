@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 #path to folder with all of the images
-face_path = "Eye_Inhibition_stimuli\\"
+face_path = "Eye_Inhibition_stimuli/"
 
 # the images are labelled according to the facial features the image shows
 # this dictionary maps those labels to the features
