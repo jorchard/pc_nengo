@@ -15,21 +15,30 @@ face_path = "Eye_Inhibition_stimuli\\"
 
 # the images are labelled according to the facial features the image shows
 # this dictionary maps those labels to the features
-features = {1: "Cropped eye",
-            2: "R. eye",
-            3: "R. eye, L. eye",
-            4: "R. eye, nose",
-            5: "R. eye, mouth",
-            6: "R. eye, L. eye, nose",
-            7: "R. eye, nose, mouth",
-            8: "Full face",
-            17: "R. eye, L. eye, mouth"}
-# note that the image labels 9 - 16 correspond to vertical reflections of the previous features
+face_features_dict = {1: "Cropped Eye",
+                    2: "R. Eye",
+                    3: "R. Eye, L. Eye",
+                    4: "R. Eye, Nose",
+                    5: "R. Eye, Mouth",
+                    6: "R. Eye, L. Eye, Nose",
+                    7: "R. Eye, Nose, Mouth",
+                    8: "Full Face",
+                    17: "R. Eye, L. Eye, Mouth"}
+# note that the image labels 9 - 16 correspond to horizontal reflections of the previous features
 # so if the image is labelled i (9,...,16) then it is the reflection of the image labelled i-8
 # the exception to this is the image labels 17 and 18, which are reflections of each other
+face_features_flip_dict = {1: "Cropped Eye",
+                    2: "1 Eye",
+                    3: "2 Eyes",
+                    4: "1 Eye, Nose",
+                    5: "1 Eye, Mouth",
+                    6: "2 Eyes, Nose",
+                    7: "1 Eye, Nose, Mouth",
+                    8: "Full Face",
+                    17: "2 Eyes, Mouth"}
 
 
-def load_eye_inhibition(feature=8, reflection=None, size=(68, 100), face_path=face_path):
+def load_eye_inhibition(feature=8, reflection=None, size=(68, 100), face_path=face_path, sex_labels=["F", "M"]):
     """ (int, boolean, tuple[int], str) -> (list[Image])
     Loads the face images from the Eye_Inhibition_stimuli folder (directory given by face_path).
     Loads only the images with the given features.
@@ -37,8 +46,12 @@ def load_eye_inhibition(feature=8, reflection=None, size=(68, 100), face_path=fa
     """
     X = []
     
-    l_feature = feature
-    r_feature = feature + 8
+    if feature == 17:
+        l_feature = 17
+        r_feature = 18
+    else:
+        l_feature = feature
+        r_feature = feature + 8
 
     if l_feature < 10:
         l_label = f"0{l_feature}"
@@ -51,8 +64,8 @@ def load_eye_inhibition(feature=8, reflection=None, size=(68, 100), face_path=fa
         r_label = f"{r_feature}"
 
     
-    for sex_label in ["F", "M"]:
-        for idx in range(1, 17):
+    for sex_label in sex_labels:
+        for idx in range(1, 17): #face labels, not feature labels
             if idx < 10:
                 idx_label = f"0{idx}"
             else:
@@ -150,8 +163,8 @@ def transform_eye_inhibition(X, size=(68, 100), radius=(2, 3)):
 
     #new_X = []
     for freqs in fourier_transforms: #remove the radius smallest frequencies
-        for i in range(radius[0]):
-            for j in range(radius[1]):
+        for j in range(radius[0]):
+            for i in range(radius[1]):
                 #freqs[center_idx[1] + i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
                 #freqs[center_idx[1] + i, center_idx[0] - j] = np.random.randn() + np.random.randn()*1.j
                 #freqs[center_idx[1] - i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
@@ -204,10 +217,50 @@ def shuffle_block(X, block_size=(25, 17)):
     return np.array(S)
 
 
+def get_dataloader_features(feature=8, reflection=None, face_path=face_path, 
+                            size=(68, 100), radius=(2, 3),
+                            num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
+                            batch_size=8, shuffle=True, channels=True):
+    """
+    Puts the face images. 
+    Normal images are labelled 1, shuffled images are labeled 1.
+
+    feautre             int, what facial features are present on the face images (nose, eyes, ears, etc.).
+    reflection          bool, whether to include the original faces, their reflections, or both (None).
+    face_path           str, path to the directory with all the images.
+    size                tuple[int], the size to reshape the image to.
+    block_size          tuple[int], size of the blocks to use when shuffling the images.
+    num_translations    int, the number of translations to do.
+    num_rotations       int, the number of rotations to do.
+    min_shift           int, the minimum shift value.
+    max_shift           int, the maximum shift value.
+    min_angle           num, the minimum rotation angle.
+    max_angle           num, the maximum roation angle.
+    batch_size          int, the batch size for the DataLoader.
+    shuffle             bool, whether or not to shuffle the samples in the dataloader.
+    channels            bool, whether or not to reshape the dataset to include a dimension for channels.
+    """
+    X = load_eye_inhibition(feature=feature, reflection=reflection, size=size, face_path=face_path)
+    X = augment_data(X, num_translations=num_translations, num_rotations=num_rotations, 
+                     min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
+    X = transform_eye_inhibition(X, radius=radius)
+
+    labels = np.ones(X.shape[0])
+
+    if channels: #unsqueeze the tensor to include channel dimension
+        dataset = TensorDataset(torch.from_numpy(X).float().unsqueeze(1), torch.from_numpy(labels).float())
+    else:
+        dataset = TensorDataset(torch.from_numpy(X).float(), torch.from_numpy(labels).float())
+
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+
+
 def get_dataloader_block_shuffled(feature=8, reflection=None, face_path=face_path, 
                             size=(68, 100), radius=(2, 3), block_size=(25, 17),
                             num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
                             batch_size=8, shuffle=True, channels=True):
+    
     """
     Puts the face images and their shuffled counterparts into a DataLoader object. 
     Normal images are labelled 1, shuffled images are labeled 1.
@@ -282,8 +335,73 @@ def get_dataloader_shuffled(feature=8, reflection=None, face_path=face_path,
 
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
+
+
+def load_eye_inhibition_outline(size=(68, 100), face_path=face_path, sex_labels=["F", "M"]):
+    """ (int, boolean, tuple[int], str) -> (list[Image])
+    Loads the face images from the Eye_Inhibition_stimuli folder (directory given by face_path).
+    Loads only the images with the given features.
+    The reflection boolean indicates whether to load the left or right images. If it is None, loads both.
+    """
+    X = []
+    
+    l_label = f"02"
+    
+    for sex_label in sex_labels:
+        for idx in range(1, 17): #face labels, not feature labels
+            if idx < 10:
+                idx_label = f"0{idx}"
+            else:
+                idx_label = str(idx)
+            
+            img = Image.open(face_path + f"{sex_label}{idx_label}-{l_label}l.bmp")
+            X.append(img)
+
+    #resize the image to 68x100, convert to numpy array, normalize pixel values to [0, 1]
+    new_X = [np.asarray(img.resize(size))/255 for img in X]
+    for arr in new_X:
+        arr[:,0:size[0]//2] = arr[:,:size[0]//2-1:-1] #flip image
+    return np.array(new_X)
+
+def get_dataloader_outline(reflection=None, face_path=face_path, 
+                            size=(68, 100), radius=(2, 3),
+                            num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
+                            batch_size=8, shuffle=True, channels=True):
+    """
+    Puts the face images. 
+    Normal images are labelled 1, shuffled images are labeled 1.
+
+    feautre             int, what facial features are present on the face images (nose, eyes, ears, etc.).
+    reflection          bool, whether to include the original faces, their reflections, or both (None).
+    face_path           str, path to the directory with all the images.
+    size                tuple[int], the size to reshape the image to.
+    block_size          tuple[int], size of the blocks to use when shuffling the images.
+    num_translations    int, the number of translations to do.
+    num_rotations       int, the number of rotations to do.
+    min_shift           int, the minimum shift value.
+    max_shift           int, the maximum shift value.
+    min_angle           num, the minimum rotation angle.
+    max_angle           num, the maximum roation angle.
+    batch_size          int, the batch size for the DataLoader.
+    shuffle             bool, whether or not to shuffle the samples in the dataloader.
+    channels            bool, whether or not to reshape the dataset to include a dimension for channels.
+    """
+    X = load_eye_inhibition_outline(size=size, face_path=face_path)
+    X = augment_data(X, num_translations=num_translations, num_rotations=num_rotations, 
+                     min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
+    X = transform_eye_inhibition(X, radius=radius)
+
+    labels = np.ones(X.shape[0])
+
+    if channels: #unsqueeze the tensor to include channel dimension
+        dataset = TensorDataset(torch.from_numpy(X).float().unsqueeze(1), torch.from_numpy(labels).float())
+    else:
+        dataset = TensorDataset(torch.from_numpy(X).float(), torch.from_numpy(labels).float())
+
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
 if __name__ == "__main__":
-    X = transform_eye_inhibition(load_eye_inhibition())
+    X = transform_eye_inhibition(load_eye_inhibition(feature=17))
 
     plt.figure()
     plt.imshow(X[0], cmap="gray")

@@ -20,7 +20,7 @@ for i in range(labels_names.shape[0]):
     labels_dict[labels_names[i][0]] = labels_names[i][1]
 
 
-def load_imagenet(num_images, classes, image_net_path=image_net_path):
+def load_imagenet(num_images, classes, size=(68, 100), image_net_path=image_net_path):
     """
     Loads the images from ImageNet.
 
@@ -41,7 +41,40 @@ def load_imagenet(num_images, classes, image_net_path=image_net_path):
         for idx in indices:
             X.append(Image.open(directory + "\\" + image_names[idx]))
     
-    return X
+    #resize the image to 68x100, grayscale, convert to numpy array, normalize pixel values to [0, 1]
+    return np.array([np.asarray(img.resize(size).convert("L"))/255 for img in X])
+
+
+def augment_imagenet_data(X, num_translations, num_rotations, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45):
+    """ (list, int, int, int, int, num, num) -> (np.array)
+    Augment the data by rotating and shifting.
+
+    X                   list, the array of images to be augmented,
+    num_translations    int, the number of translations to do.
+    num_rotations       int, the number of rotations to do.
+    min_shift           int, the minimum shift value.
+    max_shift           int, the maximum shift value.
+    min_angle           num, the minimum rotation angle.
+    max_angle           num, the maximum roation angle.
+    """
+    new_X = []
+
+    for idx in range(X.shape[0]):
+        img = X[idx]
+        new_X.append(img)
+
+        for trans in range(num_translations):
+            shift = np.random.randint(min_shift, max_shift+1)
+            temp_img = vertical_translate(img, shift)
+            new_X.append(temp_img)
+        
+        for rot in range(num_rotations):
+            angle = np.random.uniform(min_angle, max_angle)
+            temp_img = rotate(img, angle, reshape=False, cval=np.mean(img), mode='constant')
+            #temp_img = rotate(img, angle, reshape=False, cval=1, mode='constant')
+            new_X.append(temp_img)
+
+    return np.array(new_X)
 
 
 def transform_imagenet(X, size=(68, 100), radius=(2, 3)):
@@ -55,10 +88,10 @@ def transform_imagenet(X, size=(68, 100), radius=(2, 3)):
     if type(radius) is int:
         radius = (radius, radius)
     #resize the image to 68x100, grayscale, convert to numpy array, normalize pixel values to [0, 1]
-    new_X = [np.asarray(img.resize(size).convert("L"))/255 for img in X]
+    #new_X = [np.asarray(img.resize(size).convert("L"))/255 for img in X]
 
     #take fourier transforms
-    fourier_transforms = [np.fft.fft2(x) for x in new_X]
+    fourier_transforms = [np.fft.fft2(x) for x in X]
     #shift the DC to the center
     fourier_transforms = [np.fft.fftshift(freqs) for freqs in fourier_transforms]
 
@@ -67,8 +100,8 @@ def transform_imagenet(X, size=(68, 100), radius=(2, 3)):
 
     #new_X = []
     for freqs in fourier_transforms: #remove the radius smallest frequencies
-        for i in range(radius[0]):
-            for j in range(radius[1]):
+        for j in range(radius[0]):
+            for i in range(radius[1]):
                 #freqs[center_idx[1] + i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
                 #freqs[center_idx[1] + i, center_idx[0] - j] = np.random.randn() + np.random.randn()*1.j
                 #freqs[center_idx[1] - i, center_idx[0] + j] = np.random.randn() + np.random.randn()*1.j
@@ -87,7 +120,7 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
                    face_path=face_path, image_net_path=image_net_path, 
                    size=(68, 100), block_size=(25, 17), radius=(2, 3), 
                    num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
-                   batch_size=8, shuffle=True, channels=True):
+                   batch_size=8, shuffle=True, channels=True, include_shuffled=True, augment_imagenet=True):
     """
     Puts the face images and the imagenet images into a DataLoader object. 
     Face images are labelled 1, imagenet images are labeled 0.
@@ -119,15 +152,27 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
     X = transform_eye_inhibition(X, radius=radius)
 
     #imagenet data
-    S = load_imagenet(num_images=num_images, classes=classes, image_net_path=image_net_path)
-    S = transform_imagenet(S, size=size, radius=radius)
+    I = load_imagenet(num_images=num_images, classes=classes, image_net_path=image_net_path, size=size)
+    if augment_imagenet:
+        I_aug = augment_imagenet_data(I, num_translations=num_translations, num_rotations=num_rotations, 
+                        min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
+        I_aug = transform_eye_inhibition(I_aug, radius=radius)
+    I = transform_imagenet(I, size=size, radius=radius)
 
     #shuffle the face images by block
     B = shuffle_block(X, block_size=block_size)
+    if include_shuffled:
+        S = shuffle_data(X)
 
     #training dataloader
-    train_labels = np.concatenate((np.ones(X_aug.shape[0]), np.zeros(S.shape[0] + B.shape[0])))
-    train_data = np.concatenate((X_aug, S, B), axis=0)
+    train_labels = np.concatenate((np.ones(X_aug.shape[0]), np.zeros(I.shape[0] + B.shape[0])))
+    train_data = np.concatenate((X_aug, I, B), axis=0)
+    if include_shuffled:
+        train_labels = np.concatenate((train_labels, np.zeros(S.shape[0])))
+        train_data = np.concatenate((train_data, S), axis=0)
+    if augment_imagenet:
+        train_labels = np.concatenate((train_labels, np.zeros(I_aug.shape[0])))
+        train_data = np.concatenate((train_data, I_aug), axis=0)
 
     if channels: #unsqueeze the tensor to include channel dimension
         train_dataset = TensorDataset(torch.from_numpy(train_data).float().unsqueeze(1), torch.from_numpy(train_labels).float())
@@ -136,8 +181,8 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
 
     """
     #testing dataloader
-    test_labels = np.concatenate((np.ones(X.shape[0]), np.zeros(S.shape[0])))
-    test_data = np.concatenate((X, S, B), axis=0)
+    test_labels = np.concatenate((np.ones(X.shape[0]), np.zeros(I.shape[0])))
+    test_data = np.concatenate((X, I, B), axis=0)
 
     if channels: #unsqueeze the tensor to include channel dimension
         test_dataset = TensorDataset(torch.from_numpy(test_data).float().unsqueeze(1), torch.from_numpy(test_labels).float())
@@ -150,21 +195,54 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
     return train_dl#, test_dl
 
 
+def get_imagenet_validation_dataloader(num_images=10, classes=[], image_net_path="imagenet-mini\\val\\", 
+                                        size=(68, 100), radius=(2, 3), batch_size=8, shuffle=True, channels=True):
+    """
+    Puts the face images and the imagenet images into a DataLoader object. 
+    Face images are labelled 1, imagenet images are labeled 0.
+    Returns a training dataloader with augmented images.
+
+    num_images          int, how many images per class to load.
+    classes             List[str], the labels of the classes to use.
+    image_net_path      str, path to the directory with all the imagenet images.
+    size                tuple[int], the size to reshape the image to.
+    radius              int, radius around the Fourier transform DC which we use set to 0.
+    batch_size          int, the batch size for the DataLoader.
+    shuffle             bool, whether or not to shuffle the samples in the dataloader.
+    channels            bool, whether or not to reshape the dataset to include a dimension for channels.
+    """
+    #imagenet data
+    I = load_imagenet(num_images=num_images, classes=classes, image_net_path=image_net_path, size=size)
+    I = transform_imagenet(I, size=size, radius=radius)
+
+    #dataset
+    train_labels = np.zeros(I.shape[0])
+    train_data = I
+
+    if channels: #unsqueeze the tensor to include channel dimension
+        train_dataset = TensorDataset(torch.from_numpy(train_data).float().unsqueeze(1), torch.from_numpy(train_labels).float())
+    else:
+        train_dataset = TensorDataset(torch.from_numpy(train_data).float(), torch.from_numpy(train_labels).float())
+
+    train_dl = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle)
+
+    return train_dl
+
 if __name__ == '__main__':
 
-    S = load_imagenet(10, ["n04330267", "n04326547", "n04328186", "n04330267"])
-    S = transform_imagenet(S, radius=1)
+    I = load_imagenet(10, ["n04330267", "n04326547", "n04328186", "n04330267"])
+    I = transform_imagenet(I, radius=1)
 
     """
-    for img in S:
+    for img in I:
         plt.figure()
         plt.imshow(img, cmap="gray")
         plt.show()
     """
     
     plt.figure()
-    for i in range(S.shape[0]):
-        counts, bins = np.histogram(S[i], 256)
+    for i in range(I.shape[0]):
+        counts, bins = np.histogram(I[i], 256)
         plt.stairs(counts, bins)
     plt.title("Pixel Intensity of Images")
     plt.show()
