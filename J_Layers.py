@@ -4,6 +4,8 @@ from torch import nn
 
 import J_utils
 
+#DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class Layer(nn.Module):
     def __init__(self, in_size, out_size, act_fn, use_bias=False, kaiming_init=False):
@@ -64,6 +66,7 @@ class FCLayer(Layer):
         super().__init__(in_size, out_size, act_fn, use_bias, kaiming_init)
         self.use_bias = use_bias
         self.inp = None
+        
 
     def forward(self, inp):
         # Todo: force to be float but why not double?

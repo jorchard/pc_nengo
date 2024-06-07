@@ -5,6 +5,9 @@ import J_utils
 from J_Layers import FCLayer
 import pickle
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 class PCModel(object):
     def __init__(self, nodes, mu_dt, act_fn, use_bias=False, kaiming_init=False):
         self.nodes = nodes
@@ -30,15 +33,16 @@ class PCModel(object):
                 use_bias=use_bias,
                 kaiming_init=kaiming_init,
             )
+            layer.to(DEVICE)
             self.layers.append(layer)
 
     def set_input(self, feature):
         #self.mus[0] = feature.clone()
-        self.mus[-1] = feature.clone()
+        self.mus[-1] = feature.clone().to(DEVICE)
 
     def set_target(self, target):
         #self.mus[-1] = target.clone()
-        self.mus[0] = target.clone()
+        self.mus[0] = target.clone().to(DEVICE)
     
     def forward(self, val):
         for layer in self.layers:
@@ -51,7 +55,7 @@ class PCModel(object):
 
     def propagate_mu(self):
         for l in range(1, self.n_nodes):
-            self.mus[l] = torch.zeros((self.mus[0].shape[0], self.nodes[l]))
+            self.mus[l] = torch.zeros((self.mus[0].shape[0], self.nodes[l])).to(DEVICE)
         #for l in range(1, self.n_layers):
         #    self.mus[l] = self.layers[l - 1].forward(self.mus[l - 1])
 
