@@ -245,7 +245,10 @@ def get_dataloader_features(feature=8, reflection=None, face_path=face_path,
                      min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
     X = transform_eye_inhibition(X, radius=radius)
 
-    labels = np.ones(X.shape[0])
+    if features != 1:
+        labels = np.ones(X.shape[0])
+    else:
+        labels = = np.zeros(X.shape[0])
 
     if channels: #unsqueeze the tensor to include channel dimension
         dataset = TensorDataset(torch.from_numpy(X).float().unsqueeze(1), torch.from_numpy(labels).float())
@@ -386,7 +389,9 @@ def get_dataloader_outline(reflection=None, face_path=face_path,
     shuffle             bool, whether or not to shuffle the samples in the dataloader.
     channels            bool, whether or not to reshape the dataset to include a dimension for channels.
     """
-    X = load_eye_inhibition_outline(size=size, face_path=face_path)
+    img = Image.open(face_path + f"Outline.bmp")
+    X = [np.asarray(img.resize(size))/255]
+    X = np.array(X)
     X = augment_data(X, num_translations=num_translations, num_rotations=num_rotations, 
                      min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
     X = transform_eye_inhibition(X, radius=radius)
