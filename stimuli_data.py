@@ -245,10 +245,10 @@ def get_dataloader_features(feature=8, reflection=None, face_path=face_path,
                      min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
     X = transform_eye_inhibition(X, radius=radius)
 
-    if features != 1:
+    if feature != 1:
         labels = np.ones(X.shape[0])
     else:
-        labels = = np.zeros(X.shape[0])
+        labels = np.zeros(X.shape[0])
 
     if channels: #unsqueeze the tensor to include channel dimension
         dataset = TensorDataset(torch.from_numpy(X).float().unsqueeze(1), torch.from_numpy(labels).float())

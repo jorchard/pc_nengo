@@ -261,6 +261,90 @@ class PCModel(object):
         return conv_times#, torch.stack(errors, dim=0).numpy()
     
 
+
+    def test_batch_supervised_phase_space(self, img_batch, label_batch, n_iters, fixed_preds=False, mu_dt=None, 
+                              tol=1e-4, norm="L2", print_log=False, norm_errors=True):
+        if mu_dt is not None:
+            self.mu_dt_old = self.mu_dt
+            self.mu_dt = mu_dt
+        
+        self.tol = tol
+        if norm == "L2":
+            self.norm = lambda x: torch.sqrt(torch.sum(x**2))
+        elif norm == "L1":
+            self.norm = lambda x: torch.sum(torch.abs(x))
+        elif norm == "Max":
+            self.norm = lambda x: torch.max(torch.abs(x))
+            
+        self.reset()
+        self.set_target(torch.full_like(label_batch, 0.5))
+        self.propagate_mu()
+        self.set_input(img_batch)
+        conv_times, phase_plots = self.test_updates_phase_space(n_iters, norm=norm, fixed_preds=fixed_preds, print_log=print_log, norm_errors=norm_errors)
+
+        if mu_dt is not None:
+            self.mu_dt = self.mu_dt_old
+
+        return self.mus[0], conv_times, phase_plots
+
+
+    def test_updates_phase_space(self, n_iters, norm, fixed_preds=False, print_log=False, norm_errors=True):     
+        self.errs[0] = torch.zeros_like(self.mus[0])
+        for n in range(1, self.n_nodes):
+            self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
+            self.errs[n] = self.mus[n] - self.preds[n]
+        
+        last_preds = self.mus[0].clone()
+        phase_space = []
+        errors = []
+        conv_times = [None for _ in range(last_preds.shape[0])]
+
+        for itr in range(n_iters):
+            self.mus[0] = self.mus[0] + self.mu_dt*(self.layers[0].backward(self.errs[1]))
+            for l in range(1, self.n_layers):
+                delta = self.layers[l].backward(self.errs[l + 1]) - self.errs[l]
+                self.mus[l] = self.mus[l] + self.mu_dt * delta
+
+            self.errs[0] = self.errs[0] + self.mu_dt*(self.mus[0] - self.errs[0])
+            for n in range(1, self.n_nodes):
+                if not fixed_preds:
+                    self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
+                self.errs[n] = self.errs[n] + self.mu_dt*(self.mus[n] - self.preds[n] - self.errs[n])
+
+            if norm_errors:
+                err = torch.cat([self.errs[n] for n in range(1, self.n_nodes)], dim=1)
+                errors.append(err)
+    
+                if len(errors) >= 2:
+                    conv_times = self.convergence(last_preds=errors[-2], curr_preds=errors[-1], 
+                                              conv_times=conv_times, itr=itr)
+                    errors.pop(0) #No need to save everything 
+                #add to phase space list
+                if norm == "L1":
+                    phase_space.append(torch.sum(torch.abs(err), axis=1).cpu().numpy())
+                elif norm == "L2":
+                    phase_space.append(torch.sum(torch.pow(err, 2), axis=1).cpu().numpy())
+                elif norm == "Max":
+                    phase_space.append(torch.max(torch.abs(err), axis=1).cpu().numpy())
+            else:
+                conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[0].clone(), 
+                                          conv_times=conv_times, itr=itr)
+                last_preds = self.mus[0].clone()
+                #add to phase space list
+                if norm == "L1":
+                    phase_space.append(torch.sum(torch.abs(last_preds), axis=1).cpu().numpy())
+                elif norm == "L2":
+                    phase_space.append(torch.sum(torch.pow(last_preds, 2), axis=1).cpu().numpy())
+                elif norm == "Max":
+                    phase_space.append(torch.max(torch.abs(last_preds), axis=1).cpu().numpy())
+                
+            if print_log:
+                print(last_preds)
+            
+            if all([x is not None for x in conv_times]): #every batch has converged
+                break
+        
+        return conv_times, np.array(phase_space)
     '''
     # Misc.
     # Mainly used to reset the net
