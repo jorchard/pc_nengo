@@ -296,7 +296,7 @@ class PCModel(object):
             self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
             self.errs[n] = self.mus[n] - self.preds[n]
         
-        last_preds = self.mus[activities_index].clone()
+        last_preds = self.mus[0].clone()
         phase_space = []
         errors = []
         conv_times = [None for _ in range(last_preds.shape[0])]
@@ -329,16 +329,16 @@ class PCModel(object):
                 elif norm == "Max":
                     phase_space.append(torch.max(torch.abs(err), axis=1).cpu().numpy())
             else:
-                conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[activities_index].clone(), 
+                conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[0].clone(), 
                                           conv_times=conv_times, itr=itr)
-                last_preds = self.mus[activities_index].clone()
+                last_preds = self.mus[0].clone()
                 #add to phase space list
                 if norm == "L1":
-                    phase_space.append(torch.sum(torch.abs(last_preds), axis=1).cpu().numpy())
+                    phase_space.append(torch.sum(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
                 elif norm == "L2":
-                    phase_space.append(torch.sum(torch.pow(last_preds, 2), axis=1).cpu().numpy())
+                    phase_space.append(torch.sum(torch.pow(self.mus[activities_index].clone(), 2), axis=1).cpu().numpy())
                 elif norm == "Max":
-                    phase_space.append(torch.max(torch.abs(last_preds), axis=1).cpu().numpy())
+                    phase_space.append(torch.max(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
                 
             if print_log:
                 print(last_preds)
