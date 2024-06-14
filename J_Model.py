@@ -263,7 +263,7 @@ class PCModel(object):
 
 
     def test_batch_supervised_phase_space(self, img_batch, label_batch, n_iters, fixed_preds=False, mu_dt=None, 
-                              tol=1e-4, norm="L2", print_log=False, norm_errors=True):
+                              tol=1e-4, norm="L2", print_log=False, norm_errors=True, activities_index=0):
         if mu_dt is not None:
             self.mu_dt_old = self.mu_dt
             self.mu_dt = mu_dt
@@ -280,7 +280,9 @@ class PCModel(object):
         self.set_target(torch.full_like(label_batch, 0.5))
         self.propagate_mu()
         self.set_input(img_batch)
-        conv_times, phase_plots = self.test_updates_phase_space(n_iters, norm=norm, fixed_preds=fixed_preds, print_log=print_log, norm_errors=norm_errors)
+        conv_times, phase_plots = self.test_updates_phase_space(n_iters, norm=norm, fixed_preds=fixed_preds, 
+                                                                print_log=print_log, norm_errors=norm_errors,
+                                                                activities_index=activities_index)
 
         if mu_dt is not None:
             self.mu_dt = self.mu_dt_old
@@ -288,13 +290,13 @@ class PCModel(object):
         return self.mus[0], conv_times, phase_plots
 
 
-    def test_updates_phase_space(self, n_iters, norm, fixed_preds=False, print_log=False, norm_errors=True):     
+    def test_updates_phase_space(self, n_iters, norm, fixed_preds=False, print_log=False, norm_errors=True, activities_index=0):     
         self.errs[0] = torch.zeros_like(self.mus[0])
         for n in range(1, self.n_nodes):
             self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
             self.errs[n] = self.mus[n] - self.preds[n]
         
-        last_preds = self.mus[0].clone()
+        last_preds = self.mus[activities_index].clone()
         phase_space = []
         errors = []
         conv_times = [None for _ in range(last_preds.shape[0])]
@@ -327,9 +329,9 @@ class PCModel(object):
                 elif norm == "Max":
                     phase_space.append(torch.max(torch.abs(err), axis=1).cpu().numpy())
             else:
-                conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[0].clone(), 
+                conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[activities_index].clone(), 
                                           conv_times=conv_times, itr=itr)
-                last_preds = self.mus[0].clone()
+                last_preds = self.mus[activities_index].clone()
                 #add to phase space list
                 if norm == "L1":
                     phase_space.append(torch.sum(torch.abs(last_preds), axis=1).cpu().numpy())
