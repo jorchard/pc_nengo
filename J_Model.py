@@ -295,12 +295,26 @@ class PCModel(object):
         for n in range(1, self.n_nodes):
             self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
             self.errs[n] = self.mus[n] - self.preds[n]
+
+        #do one iteration with full image input
+        self.mus[0] = self.mus[0] + self.mu_dt*(self.layers[0].backward(self.errs[1]))
+        for l in range(1, self.n_layers):
+            delta = self.layers[l].backward(self.errs[l + 1]) - self.errs[l]
+            self.mus[l] = self.mus[l] + self.mu_dt * delta
+
+        self.errs[0] = self.errs[0] + self.mu_dt*(self.mus[0] - self.errs[0])
+        for n in range(1, self.n_nodes):
+            if not fixed_preds:
+                self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
+            self.errs[n] = self.errs[n] + self.mu_dt*(self.mus[n] - self.preds[n] - self.errs[n])
         
         last_preds = self.mus[0].clone()
         phase_space = []
         errors = []
         conv_times = [None for _ in range(last_preds.shape[0])]
 
+        #remove stimuli
+        self.set_input(torch.zeros_like(self.mus[-1]))
         for itr in range(n_iters):
             self.mus[0] = self.mus[0] + self.mu_dt*(self.layers[0].backward(self.errs[1]))
             for l in range(1, self.n_layers):
