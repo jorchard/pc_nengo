@@ -15,7 +15,8 @@ class PCModel(object):
         self.mu_dt_old = None
 
         self.softmax = torch.nn.Softmax(dim=1)
-        
+
+        self.norm_act = False
 
         self.n_nodes = len(nodes) # For traversing activations
         self.n_layers = len(nodes) - 1 # For traversing weights
@@ -157,6 +158,9 @@ class PCModel(object):
             self.norm = lambda x: torch.sum(torch.abs(x))
         elif norm == "Max":
             self.norm = lambda x: torch.max(torch.abs(x))
+        elif norm == "Activity":
+            self.norm_act = True
+            self.norm = lambda x: 0 if torch.any(x >= 1)[0] else 100 
             
         self.reset()
         #self.set_input(img_batch)
@@ -187,6 +191,9 @@ class PCModel(object):
             self.norm = lambda x: torch.sum(torch.abs(x))
         elif norm == "Max":
             self.norm = lambda x: torch.max(torch.abs(x))
+        elif norm == "Activity":
+            self.norm_act = True
+            self.norm = lambda x: 0 if torch.any(x >= 1)[0] else 100 
             
         self.reset()
         #self.set_input(img_batch)
@@ -275,6 +282,9 @@ class PCModel(object):
             self.norm = lambda x: torch.sum(torch.abs(x))
         elif norm == "Max":
             self.norm = lambda x: torch.max(torch.abs(x))
+        elif norm == "Activity":
+            self.norm_act = True
+            self.norm = lambda x: 0 if torch.any(x >= 1)[0] else 100 
             
         self.reset()
         self.set_target(torch.full_like(label_batch, 0.5))
@@ -328,6 +338,8 @@ class PCModel(object):
                     phase_space.append(torch.sum(torch.pow(err, 2), axis=1).cpu().numpy())
                 elif norm == "Max":
                     phase_space.append(torch.max(torch.abs(err), axis=1).cpu().numpy())
+                elif norm == "Activity":
+                    phase_space.append(torch.sum(torch.abs(err), axis=1).cpu().numpy())
             else:
                 conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[0].clone(), 
                                           conv_times=conv_times, itr=itr)
@@ -339,7 +351,8 @@ class PCModel(object):
                     phase_space.append(torch.sum(torch.pow(self.mus[activities_index].clone(), 2), axis=1).cpu().numpy())
                 elif norm == "Max":
                     phase_space.append(torch.max(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
-                
+                elif norm == "Activity":
+                    phase_space.append(torch.sum(torch.abs(err), axis=1).cpu().numpy())
             if print_log:
                 print(last_preds)
             
@@ -354,11 +367,16 @@ class PCModel(object):
     def convergence(self, last_preds, curr_preds, conv_times, itr):
         for idx, time in enumerate(conv_times):
             if time is None: #has not converged yet, check convergence
-                diff = curr_preds[idx] - last_preds[idx]
-                #print(f"{self.norm(diff)}")
-                if self.norm(diff).item() < self.tol: #converged!
-                    #print("Converged, should be at least one time in output")
-                    conv_times[idx] = (itr+1)*self.mu_dt
+                if self.norm_act:
+                    if self.norm(curr_preds[idx]) < self.tol:
+                       #print("Converged, should be at least one time in output")
+                        conv_times[idx] = (itr+1)*self.mu_dt 
+                else:
+                    diff = curr_preds[idx] - last_preds[idx]
+                    #print(f"{self.norm(diff)}")
+                    if self.norm(diff).item() < self.tol: #converged!
+                        #print("Converged, should be at least one time in output")
+                        conv_times[idx] = (itr+1)*self.mu_dt
         return conv_times
 
 
