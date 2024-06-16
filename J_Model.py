@@ -160,7 +160,7 @@ class PCModel(object):
             self.norm = lambda x: torch.max(torch.abs(x))
         elif norm == "Activity":
             self.norm_act = True
-            self.norm = lambda x: 0 if torch.any(x >= 1)[0] else 100 
+            self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100 
             
         self.reset()
         #self.set_input(img_batch)
@@ -193,7 +193,7 @@ class PCModel(object):
             self.norm = lambda x: torch.max(torch.abs(x))
         elif norm == "Activity":
             self.norm_act = True
-            self.norm = lambda x: 0 if torch.any(x >= 1)[0] else 100 
+            self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100 
             
         self.reset()
         #self.set_input(img_batch)
@@ -284,7 +284,7 @@ class PCModel(object):
             self.norm = lambda x: torch.max(torch.abs(x))
         elif norm == "Activity":
             self.norm_act = True
-            self.norm = lambda x: 0 if torch.any(x >= 1)[0] else 100 
+            self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100 
             
         self.reset()
         self.set_target(torch.full_like(label_batch, 0.5))
@@ -352,7 +352,7 @@ class PCModel(object):
                 elif norm == "Max":
                     phase_space.append(torch.max(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
                 elif norm == "Activity":
-                    phase_space.append(torch.sum(torch.abs(err), axis=1).cpu().numpy())
+                    phase_space.append(torch.sum(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
             if print_log:
                 print(last_preds)
             
