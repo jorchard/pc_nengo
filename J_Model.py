@@ -285,6 +285,9 @@ class PCModel(object):
         elif norm == "Activity":
             self.norm_act = True
             self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100 
+        elif norm is None:
+            self.norm_act = True
+            self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100
             
         self.reset()
         self.set_target(torch.full_like(label_batch, 0.5))
@@ -339,7 +342,9 @@ class PCModel(object):
                 elif norm == "Max":
                     phase_space.append(torch.max(torch.abs(err), axis=1).cpu().numpy())
                 elif norm == "Activity":
-                    phase_space.append(torch.sum(torch.abs(err), axis=1).cpu().numpy())
+                    phase_space.append(torch.max(torch.abs(err), axis=1).numpy())
+                elif norm is None:
+                    phase_space.append(torch.max(torch.abs(err), axis=1).numpy())
             else:
                 conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[0].clone(), 
                                           conv_times=conv_times, itr=itr)
@@ -352,7 +357,10 @@ class PCModel(object):
                 elif norm == "Max":
                     phase_space.append(torch.max(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
                 elif norm == "Activity":
-                    phase_space.append(torch.sum(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
+                    phase_space.append(torch.sum(torch.pow(self.mus[activities_index].clone(), 2), axis=1).cpu().numpy())
+                    #phase_space.append(torch.max(torch.abs(self.mus[activities_index].clone())).item())
+                elif norm is None:
+                    phase_space.append(self.mus[activities_index].clone().squeeze().cpu().numpy())
             if print_log:
                 print(last_preds)
             
