@@ -269,11 +269,15 @@ class PCModel(object):
     
 
 
-    def test_batch_supervised_phase_space(self, img_batch, label_batch, n_iters, fixed_preds=False, mu_dt=None, 
+    def test_batch_supervised_phase_space(self, img_batch, label_batch, n_iters, fixed_preds=False, mu_dt=None, error_dt=None, 
                               tol=1e-4, norm="L2", print_log=False, norm_errors=True, activities_index=0):
         if mu_dt is not None:
             self.mu_dt_old = self.mu_dt
             self.mu_dt = mu_dt
+        if error_dt is not None:
+            self.error_dt = error_dt
+        else:
+            self.error_dt = self.mu_dt
         
         self.tol = tol
         if norm == "L2":
@@ -299,6 +303,8 @@ class PCModel(object):
 
         if mu_dt is not None:
             self.mu_dt = self.mu_dt_old
+        if error_dt is not None:
+            self.error_dt = None
 
         return self.mus[0], conv_times, phase_plots
 
@@ -320,11 +326,11 @@ class PCModel(object):
                 delta = self.layers[l].backward(self.errs[l + 1]) - self.errs[l]
                 self.mus[l] = self.mus[l] + self.mu_dt * delta
 
-            self.errs[0] = self.errs[0] + self.mu_dt*(self.mus[0] - self.errs[0])
+            self.errs[0] = self.errs[0] + self.error_dt*(self.mus[0] - self.errs[0])
             for n in range(1, self.n_nodes):
                 if not fixed_preds:
                     self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
-                self.errs[n] = self.errs[n] + self.mu_dt*(self.mus[n] - self.preds[n] - self.errs[n])
+                self.errs[n] = self.errs[n] + self.error_dt*(self.mus[n] - self.preds[n] - self.errs[n])
 
             if norm_errors:
                 err = torch.cat([self.errs[n] for n in range(1, self.n_nodes)], dim=1)
