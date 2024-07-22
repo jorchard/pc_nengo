@@ -2,10 +2,10 @@ import numpy as np
 import torch
 
 
-def get_optim(params, optim_id, lr, batch_scale=True, grad_clip=None, weight_decay=None):
+def get_optim(params, optim_id, lr, batch_scale=True, grad_clip=None, weight_decay=None, beta_1=0.9, beta_2=0.999):
     if optim_id == "Adam":
         return Adam(
-            params, lr=lr, batch_scale=batch_scale, grad_clip=grad_clip, weight_decay=weight_decay
+            params, lr=lr, batch_scale=batch_scale, grad_clip=grad_clip, weight_decay=weight_decay, beta_1=beta_1, beta_2=beta_2
         )
     elif optim_id == "SGD":
         return SGD(

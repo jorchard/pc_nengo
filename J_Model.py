@@ -4,6 +4,7 @@ import torch
 import J_utils
 from J_Layers import FCLayer
 import pickle
+from output_embedding import *
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -23,7 +24,6 @@ class PCModel(object):
 
         self.layers = []
         for l in range(self.n_layers):
-            #_act_fn = J_utils.Linear() if (l == self.n_layers - 1) else act_fn
             _act_fn = J_utils.Linear() if (l == 0) else act_fn
             #_act_fn = act_fn
 
@@ -146,13 +146,20 @@ class PCModel(object):
         return conv_times
 
     def test_batch_supervised(self, img_batch, label_batch, n_iters, fixed_preds=False, mu_dt=None, 
-                              tol=1e-4, norm="L2", print_log=False):
+                              tol=1e-4, norm="L2", print_log=False, output_vec_dic=None):
         if mu_dt is not None:
             self.mu_dt_old = self.mu_dt
             self.mu_dt = mu_dt
         
         self.tol = tol
-        if norm == "L2":
+        if output_vec_dic is not None:
+            self.norm_act = True
+            def _norm(x):
+                face_dist = np.sqrt(np.sum((x.cpu().numpy()-output_vec_dic["Face Vector"])**2))
+                not_face_dist = np.sqrt(np.sum((x.cpu().numpy()-output_vec_dic["Not Face Vector"])**2))
+                return min(face_dist, not_face_dist)
+            self.norm = _norm
+        elif norm == "L2":
             self.norm = lambda x: torch.sqrt(torch.sum(x**2))
         elif norm == "L1":
             self.norm = lambda x: torch.sum(torch.abs(x))
@@ -166,7 +173,12 @@ class PCModel(object):
         #self.set_input(img_batch)
         #self.propagate_mu()
         #self.set_target(torch.full_like(label_batch, 0.5))
-        self.set_target(torch.full_like(label_batch, 0.5))
+        if output_vec_dic is not None:
+            midpoint = torch.tensor((output_vec_dic["Face Vector"] + output_vec_dic["Not Face Vector"])/2)
+            self.set_target(torch.stack([midpoint for i in range(label_batch.shape[0])]))
+            #self.set_target(torch.full_like(label_batch, 0))
+        else:
+            self.set_target(torch.full_like(label_batch, 0.5))
         self.propagate_mu()
         self.set_input(img_batch)
         conv_times = self.test_updates(n_iters, fixed_preds=fixed_preds, print_log=print_log)
@@ -270,7 +282,7 @@ class PCModel(object):
 
 
     def test_batch_supervised_phase_space(self, img_batch, label_batch, n_iters, fixed_preds=False, mu_dt=None, error_dt=None, 
-                              tol=1e-4, norm="L2", print_log=False, norm_errors=True, activities_index=0):
+                              tol=1e-4, norm="L2", print_log=False, norm_errors=True, activities_index=0, output_vec_dic=None):
         if mu_dt is not None:
             self.mu_dt_old = self.mu_dt
             self.mu_dt = mu_dt
@@ -280,7 +292,14 @@ class PCModel(object):
             self.error_dt = self.mu_dt
         
         self.tol = tol
-        if norm == "L2":
+        if output_vec_dic is not None:
+            self.norm_act = True
+            def _norm(x):
+                face_dist = np.sqrt(np.sum((x.cpu().numpy()-output_vec_dic["Face Vector"])**2))
+                not_face_dist = np.sqrt(np.sum((x.cpu().numpy()-output_vec_dic["Not Face Vector"])**2))
+                return min(face_dist, not_face_dist)
+            self.norm = _norm
+        elif norm == "L2":
             self.norm = lambda x: torch.sqrt(torch.sum(x**2))
         elif norm == "L1":
             self.norm = lambda x: torch.sum(torch.abs(x))
@@ -288,18 +307,23 @@ class PCModel(object):
             self.norm = lambda x: torch.max(torch.abs(x))
         elif norm == "Activity":
             self.norm_act = True
-            self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100 
+            self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100
         elif norm is None:
             self.norm_act = True
             self.norm = lambda x: 0 if torch.any(x >= 1).item() else 100
             
         self.reset()
-        self.set_target(torch.full_like(label_batch, 0.5))
+        if output_vec_dic is not None:
+            midpoint = torch.tensor((output_vec_dic["Face Vector"] + output_vec_dic["Not Face Vector"])/2)
+            self.set_target(torch.stack([midpoint for i in range(label_batch.shape[0])]))
+            #self.set_target(torch.full_like(label_batch, 0))
+        else:
+            self.set_target(torch.full_like(label_batch, 0.5))
         self.propagate_mu()
         self.set_input(img_batch)
         conv_times, phase_plots = self.test_updates_phase_space(n_iters, norm=norm, fixed_preds=fixed_preds, 
                                                                 print_log=print_log, norm_errors=norm_errors,
-                                                                activities_index=activities_index)
+                                                                activities_index=activities_index, output_vec_dic=output_vec_dic)
 
         if mu_dt is not None:
             self.mu_dt = self.mu_dt_old
@@ -309,7 +333,7 @@ class PCModel(object):
         return self.mus[0], conv_times, phase_plots
 
 
-    def test_updates_phase_space(self, n_iters, norm, fixed_preds=False, print_log=False, norm_errors=True, activities_index=0):     
+    def test_updates_phase_space(self, n_iters, norm, fixed_preds=False, print_log=False, norm_errors=True, activities_index=0, output_vec_dic=None):     
         self.errs[0] = torch.zeros_like(self.mus[0])
         for n in range(1, self.n_nodes):
             self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
@@ -355,18 +379,26 @@ class PCModel(object):
                 conv_times = self.convergence(last_preds=last_preds, curr_preds=self.mus[0].clone(), 
                                           conv_times=conv_times, itr=itr)
                 last_preds = self.mus[0].clone()
+                
                 #add to phase space list
-                if norm == "L1":
-                    phase_space.append(torch.sum(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
+                if type(activities_index) is int:
+                    acts = self.mus[activities_index].clone() #activities to norm
+                else: #iterable
+                    acts = torch.cat([self.mus[i].clone() for i in activities_index], dim=1)
+                
+                if output_vec_dic is not None:
+                    phase_space.append(self.norm(acts))
+                elif norm == "L1":
+                    phase_space.append(torch.sum(torch.abs(acts), axis=1).cpu().numpy())
                 elif norm == "L2":
-                    phase_space.append(torch.sum(torch.pow(self.mus[activities_index].clone(), 2), axis=1).cpu().numpy())
+                    phase_space.append(torch.sum(torch.pow(acts, 2), axis=1).cpu().numpy())
                 elif norm == "Max":
-                    phase_space.append(torch.max(torch.abs(self.mus[activities_index].clone()), axis=1).cpu().numpy())
+                    phase_space.append(torch.max(torch.abs(acts), axis=1).cpu().numpy())
                 elif norm == "Activity":
-                    phase_space.append(torch.sum(torch.pow(self.mus[activities_index].clone(), 2), axis=1).cpu().numpy())
-                    #phase_space.append(torch.max(torch.abs(self.mus[activities_index].clone())).item())
+                    phase_space.append(torch.sum(torch.pow(acts, 2), axis=1).cpu().numpy())
+                    #phase_space.append(torch.max(torch.abs(acts)).item())
                 elif norm is None:
-                    phase_space.append(self.mus[activities_index].clone().squeeze().cpu().numpy())
+                    phase_space.append(acts.squeeze().cpu().numpy())
             if print_log:
                 print(last_preds)
             
@@ -374,6 +406,49 @@ class PCModel(object):
                 break
         
         return conv_times, np.array(phase_space)
+
+    '''
+    # Generative Methods
+    # Used to generate input images based on fixed outputs
+    '''
+    def generate_image(self, label_batch, n_iters, fixed_preds=False, mu_dt=None, error_dt=None):
+        if mu_dt is not None:
+            self.mu_dt_old = self.mu_dt #save old mu_dt
+            self.mu_dt = mu_dt
+        if error_dt is not None:
+            self.error_dt = error_dt
+        else:
+            self.error_dt = self.mu_dt
+
+        self.reset()
+        self.set_target(label_batch)
+        self.propagate_mu()
+        self.set_input(0.5*torch.ones(self.nodes[-1]))
+        self.generate_updates(n_iters, fixed_preds=fixed_preds)
+
+        if mu_dt is not None:
+            self.mu_dt = self.mu_dt_old
+
+        return self.mus[-1]
+
+    def generate_updates(self, n_iters, fixed_preds=False):
+        for n in range(1, self.n_nodes):
+            self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
+            self.errs[n] = self.mus[n] - self.preds[n]
+
+        for itr in range(n_iters):
+            for l in range(1, self.n_layers):
+                delta = self.layers[l].backward(self.errs[l + 1]) - self.errs[l]
+                self.mus[l] = self.mus[l] + self.mu_dt * delta
+            delta = - self.errs[-1]
+            self.mus[-1] = self.mus[-1] + self.mu_dt * delta
+            
+            for n in range(1, self.n_nodes):
+                if not fixed_preds:
+                    self.preds[n] = self.layers[n - 1].forward(self.mus[n - 1])
+                self.errs[n] = self.errs[n] + self.mu_dt*(self.mus[n] - self.preds[n] - self.errs[n])
+                
+    
     '''
     # Misc.
     # Mainly used to reset the net

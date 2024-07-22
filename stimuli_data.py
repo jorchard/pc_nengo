@@ -220,7 +220,8 @@ def shuffle_block(X, block_size=(25, 17)):
 def get_dataloader_features(feature=8, reflection=None, face_path=face_path, 
                             size=(68, 100), radius=(2, 3),
                             num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
-                            batch_size=8, shuffle=True, channels=True):
+                            batch_size=8, shuffle=True, channels=True,
+                            output_vec_dic=None):
     """
     Puts the face images. 
     Normal images are labelled 1, shuffled images are labeled 1.
@@ -245,10 +246,16 @@ def get_dataloader_features(feature=8, reflection=None, face_path=face_path,
                      min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
     X = transform_eye_inhibition(X, radius=radius)
 
-    if feature != 1:
-        labels = np.ones(X.shape[0])
+    if output_vec_dic is None:
+        if feature != 1:
+            labels = np.ones(X.shape[0])
+        else:
+            labels = np.zeros(X.shape[0])
     else:
-        labels = np.zeros(X.shape[0])
+        if feature != 1:
+            labels = np.vstack([output_vec_dic["Face Vector"] for i in range(X.shape[0])])
+        else:
+            labels = np.vstack([output_vec_dic["Not Face Vector"] for i in range(X.shape[0])])
 
     if channels: #unsqueeze the tensor to include channel dimension
         dataset = TensorDataset(torch.from_numpy(X).float().unsqueeze(1), torch.from_numpy(labels).float())
@@ -262,7 +269,8 @@ def get_dataloader_features(feature=8, reflection=None, face_path=face_path,
 def get_dataloader_block_shuffled(feature=8, reflection=None, face_path=face_path, 
                             size=(68, 100), radius=(2, 3), block_size=(25, 17),
                             num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
-                            batch_size=8, shuffle=True, channels=True):
+                            batch_size=8, shuffle=True, channels=True,
+                            output_vec_dic=None):
     
     """
     Puts the face images and their shuffled counterparts into a DataLoader object. 
@@ -289,7 +297,10 @@ def get_dataloader_block_shuffled(feature=8, reflection=None, face_path=face_pat
     X = transform_eye_inhibition(X, radius=radius)
     S = shuffle_block(X, block_size=block_size)
 
-    labels = np.concatenate((np.ones(X.shape[0]), np.zeros(S.shape[0])))
+    if output_vec_dic is None:
+        labels = np.zeros(X.shape[0])
+    else:
+        labels = np.vstack([output_vec_dic["Not Face Vector"] for i in range(X.shape[0])])
     data = np.concatenate((X, S), axis=0)
 
     if channels: #unsqueeze the tensor to include channel dimension
@@ -303,7 +314,8 @@ def get_dataloader_block_shuffled(feature=8, reflection=None, face_path=face_pat
 def get_dataloader_shuffled(feature=8, reflection=None, face_path=face_path, 
                             size=(68, 100), radius=(2, 3),
                             num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
-                            batch_size=8, shuffle=True, channels=True):
+                            batch_size=8, shuffle=True, channels=True,
+                            output_vec_dic=None):
     """
     Puts the face images and their shuffled counterparts into a DataLoader object. 
     Normal images are labelled 1, shuffled images are labeled 1.
@@ -328,7 +340,10 @@ def get_dataloader_shuffled(feature=8, reflection=None, face_path=face_path,
     X = transform_eye_inhibition(X, radius=radius)
     S = shuffle_data(X)
 
-    labels = np.concatenate((np.ones(X.shape[0]), np.zeros(S.shape[0])))
+    if output_vec_dic is None:
+        labels = np.zeros(X.shape[0])
+    else:
+        labels = np.vstack([output_vec_dic["Not Face Vector"] for i in range(X.shape[0])])
     data = np.concatenate((X, S), axis=0)
 
     if channels: #unsqueeze the tensor to include channel dimension
@@ -369,7 +384,8 @@ def load_eye_inhibition_outline(size=(68, 100), face_path=face_path, sex_labels=
 def get_dataloader_outline(reflection=None, face_path=face_path, 
                             size=(68, 100), radius=(2, 3),
                             num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
-                            batch_size=8, shuffle=True, channels=True):
+                            batch_size=8, shuffle=True, channels=True,
+                            output_vec_dic=None):
     """
     Puts the face images. 
     Normal images are labelled 1, shuffled images are labeled 1.
@@ -396,7 +412,46 @@ def get_dataloader_outline(reflection=None, face_path=face_path,
                      min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
     X = transform_eye_inhibition(X, radius=radius)
 
-    labels = np.ones(X.shape[0])
+    if output_vec_dic is None:
+        labels = np.ones(X.shape[0])
+    else:
+        labels = np.vstack([output_vec_dic["Face Vector"] for i in range(X.shape[0])])
+
+    if channels: #unsqueeze the tensor to include channel dimension
+        dataset = TensorDataset(torch.from_numpy(X).float().unsqueeze(1), torch.from_numpy(labels).float())
+    else:
+        dataset = TensorDataset(torch.from_numpy(X).float(), torch.from_numpy(labels).float())
+
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+
+
+def get_single_image_dataloader(sex="F", id="01", reflection=False, face_path=face_path, 
+                            size=(68, 100), radius=(2, 3),
+                            num_translations=0, num_rotations=0, min_shift=0, max_shift=0, min_angle=0, max_angle=0,
+                            batch_size=8, shuffle=False, channels=True,
+                            output_vec_dic=None):
+    X = []
+    
+    for idx in range(2, 8): #face labels, not feature labels
+        idx_label = f"0{idx}"
+        
+        img = Image.open(face_path + f"{sex}{id}-{idx_label}l.bmp")
+        X.append(img)
+    X.append(Image.open(face_path + f"{sex}{id}-17l.bmp"))
+    X.append(Image.open(face_path + f"{sex}{id}-08l.bmp"))
+    
+    #resize the image to 68x100, convert to numpy array, normalize pixel values to [0, 1]
+    new_X = [np.asarray(img.resize(size))/255 for img in X]
+    X = np.array(new_X)
+    
+    X = augment_data(X, num_translations=num_translations, num_rotations=num_rotations, 
+                     min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
+    X = transform_eye_inhibition(X, radius=radius)
+
+    if output_vec_dic is None:
+        labels = np.ones(X.shape[0])
+    else:
+        labels = np.vstack([output_vec_dic["Face Vector"] for i in range(X.shape[0])])
 
     if channels: #unsqueeze the tensor to include channel dimension
         dataset = TensorDataset(torch.from_numpy(X).float().unsqueeze(1), torch.from_numpy(labels).float())

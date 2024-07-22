@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+from output_embedding import *
+
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -28,6 +30,24 @@ def Want_accuracy(pred_labels, true_labels):
     for b in range(batch_size):
         if torch.argmax(pred_labels[b, :]) == torch.argmax(true_labels[b, :]):
             correct += 1
+    return correct / batch_size
+
+def vector_accuracy(pred_labels, true_labels, output_vec_dic):
+    batch_size = pred_labels.size(0)
+    correct = 0
+    for b in range(batch_size):
+        pred = pred_labels[b, :].to('cpu').numpy()
+        actual = true_labels[b, :].to('cpu').numpy()
+
+        face_dist = np.sqrt(np.sum((pred - output_vec_dic["Face Vector"])**2))
+        not_face_dist = np.sqrt(np.sum((pred - output_vec_dic["Not Face Vector"])**2))
+
+        if (face_dist <= not_face_dist):
+            if np.sum(np.abs(output_vec_dic["Face Vector"] - actual)) < 1:
+                correct += 1
+        elif (face_dist > not_face_dist):
+            if np.sum(np.abs(output_vec_dic["Not Face Vector"] - actual)) < 1:
+                correct += 1
     return correct / batch_size
 
 

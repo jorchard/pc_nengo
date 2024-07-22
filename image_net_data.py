@@ -120,7 +120,8 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
                    face_path=face_path, image_net_path=image_net_path, 
                    size=(68, 100), block_size=(25, 17), radius=(2, 3), 
                    num_translations=2, num_rotations=2, min_shift=-15, max_shift=30, min_angle=-45, max_angle=45,
-                   batch_size=8, shuffle=True, channels=True, include_shuffled=True, augment_imagenet=True):
+                   batch_size=8, shuffle=True, channels=True, include_shuffled=True, augment_imagenet=True,
+                   output_vec_dic=None):
     """
     Puts the face images and the imagenet images into a DataLoader object. 
     Face images are labelled 1, imagenet images are labeled 0.
@@ -165,13 +166,23 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
         S = shuffle_data(X)
 
     #training dataloader
-    train_labels = np.concatenate((np.ones(X_aug.shape[0]), np.zeros(I.shape[0] + B.shape[0])))
+    if output_vec_dic is None:
+        train_labels = np.concatenate((np.ones(X_aug.shape[0]), np.zeros(I.shape[0] + B.shape[0])))
+    else:
+        train_labels = np.vstack((np.vstack([output_vec_dic["Face Vector"] for i in range(X_aug.shape[0])]), 
+                                  np.vstack([output_vec_dic["Not Face Vector"] for i in range(I.shape[0] + B.shape[0])])))
     train_data = np.concatenate((X_aug, I, B), axis=0)
     if include_shuffled:
-        train_labels = np.concatenate((train_labels, np.zeros(S.shape[0])))
+        if output_vec_dic is None:
+            train_labels = np.concatenate((train_labels, np.zeros(S.shape[0])))
+        else:
+            train_labels = np.vstack((train_labels, np.vstack([output_vec_dic["Not Face Vector"] for i in range(S.shape[0])])))
         train_data = np.concatenate((train_data, S), axis=0)
     if augment_imagenet:
-        train_labels = np.concatenate((train_labels, np.zeros(I_aug.shape[0])))
+        if output_vec_dic is None:
+            train_labels = np.concatenate((train_labels, np.zeros(I_aug.shape[0])))
+        else:
+            train_labels = np.vstack((train_labels, np.vstack([output_vec_dic["Not Face Vector"] for i in range(I_aug.shape[0])])))
         train_data = np.concatenate((train_data, I_aug), axis=0)
 
     if channels: #unsqueeze the tensor to include channel dimension
@@ -196,7 +207,8 @@ def get_dataloader(feature=8, reflection=None, num_images=10, classes=[],
 
 
 def get_imagenet_validation_dataloader(num_images=10, classes=[], image_net_path="imagenet-mini/val/", 
-                                        size=(68, 100), radius=(2, 3), batch_size=8, shuffle=True, channels=True):
+                                       size=(68, 100), radius=(2, 3), batch_size=8, shuffle=True, channels=True,
+                                       output_vec_dic=None):
     """
     Puts the face images and the imagenet images into a DataLoader object. 
     Face images are labelled 1, imagenet images are labeled 0.
@@ -216,7 +228,10 @@ def get_imagenet_validation_dataloader(num_images=10, classes=[], image_net_path
     I = transform_imagenet(I, size=size, radius=radius)
 
     #dataset
-    train_labels = np.zeros(I.shape[0])
+    if output_vec_dic is None:
+        train_labels = np.zeros(I.shape[0])
+    else:
+        train_labels = np.vstack([output_vec_dic["Not Face Vector"] for i in range(I.shape[0])])
     train_data = I
 
     if channels: #unsqueeze the tensor to include channel dimension
