@@ -241,7 +241,12 @@ def get_dataloader_features(feature=8, reflection=None, face_path=face_path,
     shuffle             bool, whether or not to shuffle the samples in the dataloader.
     channels            bool, whether or not to reshape the dataset to include a dimension for channels.
     """
-    X = load_eye_inhibition(feature=feature, reflection=reflection, size=size, face_path=face_path)
+    if feature == 0:
+        img = Image.open(face_path + f"Outline.bmp")
+        X = [np.asarray(img.resize(size))/255]
+        X = np.array(X)
+    else:
+        X = load_eye_inhibition(feature=feature, reflection=reflection, size=size, face_path=face_path)
     X = augment_data(X, num_translations=num_translations, num_rotations=num_rotations, 
                      min_shift=min_shift, max_shift=max_shift, min_angle=min_angle, max_angle=max_angle)
     X = transform_eye_inhibition(X, radius=radius)
@@ -429,9 +434,12 @@ def get_single_image_dataloader(sex="F", id="01", reflection=False, face_path=fa
                             size=(68, 100), radius=(2, 3),
                             num_translations=0, num_rotations=0, min_shift=0, max_shift=0, min_angle=0, max_angle=0,
                             batch_size=8, shuffle=False, channels=True,
-                            output_vec_dic=None):
+                            output_vec_dic=None, outline=False):
     X = []
     
+    if outline:
+        X.append(Image.open(face_path + f"Outline.bmp"))
+        
     for idx in range(2, 8): #face labels, not feature labels
         idx_label = f"0{idx}"
         
@@ -439,6 +447,7 @@ def get_single_image_dataloader(sex="F", id="01", reflection=False, face_path=fa
         X.append(img)
     X.append(Image.open(face_path + f"{sex}{id}-17l.bmp"))
     X.append(Image.open(face_path + f"{sex}{id}-08l.bmp"))
+    
     
     #resize the image to 68x100, convert to numpy array, normalize pixel values to [0, 1]
     new_X = [np.asarray(img.resize(size))/255 for img in X]
